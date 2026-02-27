@@ -114,7 +114,6 @@ class Bridge:
             log.info("[Bridge] Starting kiro-cli acp...")
             self._acp = ACPClient(
                 cli_path=self._config.KIRO_CLI_PATH,
-                mcp_servers=self._config.MCP_SERVERS,
             )
             self._acp.start()
             self._acp.on_permission_request(self._handle_permission)

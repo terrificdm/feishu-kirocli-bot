@@ -21,8 +21,7 @@
 - **⚡ 按需启动** - 收到消息才启动 kiro-cli，节省资源
 - **⏱️ 空闲自动关闭** - 可配置空闲超时，自动关闭 kiro-cli
 - **🛑 取消功能** - 发送"cancel"可中断当前操作
-- **🔧 MCP 服务器支持** - 可配置额外的 MCP 工具
-- 自动使用已配置的全局 MCP servers 和 Skills
+- **🔧 MCP 服务器支持** - 自动使用全局配置的 MCP servers（`~/.kiro/settings/mcp.json`）
 - 展示工具调用过程 + 最终回复
 - 并发控制（同一会话同时只处理一个请求）
 - kiro-cli 进程异常自动重启
@@ -142,17 +141,22 @@ cp .env.example .env
 | `BOT_NAME` | 是 | 机器人显示名称（用于 @提及检测） |
 | `KIRO_CLI_PATH` | 否 | kiro-cli 路径（默认：kiro-cli） |
 | `WORKING_DIR` | 否 | 工作目录根路径（默认：/tmp/feishu-kirocli-bot-workspaces） |
-| `MCP_SERVERS` | 否 | 额外的 MCP 服务器配置（JSON 数组） |
 | `IDLE_TIMEOUT` | 否 | 空闲超时秒数（默认：300，0=禁用） |
 | `DEBUG` | 否 | 调试模式（默认：false） |
 
 ### MCP 服务器配置
 
-可选配置额外的 MCP 工具服务器（全局配置的 MCP servers 会自动可用）：
+MCP 服务器需要通过 kiro-cli 全局配置（不能通过本项目的配置文件）：
 
 ```bash
-MCP_SERVERS='[{"name": "github", "serverType": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"]}]'
+# 添加 MCP 服务器
+kiro-cli mcp add --name memory --command npx --args '"-y","@modelcontextprotocol/server-memory"' --scope global
+
+# 查看已配置的服务器
+kiro-cli mcp list
 ```
+
+机器人会自动使用 `~/.kiro/settings/mcp.json` 中配置的所有 MCP 服务器。
 
 ## 运行
 

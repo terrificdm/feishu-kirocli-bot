@@ -1,4 +1,3 @@
-import json
 import os
 import shutil
 from dotenv import load_dotenv
@@ -18,17 +17,8 @@ class Config:
     # Idle timeout in seconds (0 = never timeout)
     IDLE_TIMEOUT: int = int(os.getenv("IDLE_TIMEOUT", "300"))  # Default 5 minutes
     
-    # MCP servers configuration (JSON string or empty)
-    # Example: '[{"name": "github", "url": "..."}]'
-    _MCP_SERVERS_JSON: str = os.getenv("MCP_SERVERS", "[]")
-
-    @property
-    def MCP_SERVERS(self) -> list[dict]:
-        """Parse MCP_SERVERS from JSON string."""
-        try:
-            return json.loads(self._MCP_SERVERS_JSON)
-        except json.JSONDecodeError:
-            return []
+    # Note: MCP servers must be configured globally via ~/.kiro/settings/mcp.json
+    # kiro-cli's ACP implementation only uses MCP servers from global config
 
     def validate(self):
         assert self.FEISHU_APP_ID, "FEISHU_APP_ID is required"

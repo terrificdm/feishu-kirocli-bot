@@ -21,8 +21,7 @@ Feishu WebSocket ──→ Bridge ──→ kiro-cli acp (on-demand)
 - **⚡ On-Demand Startup** - kiro-cli starts only when message received, saves resources
 - **⏱️ Auto Idle Shutdown** - Configurable idle timeout to auto-stop kiro-cli
 - **🛑 Cancel Operation** - Send "cancel" to interrupt current operation
-- **🔧 MCP Server Support** - Configure additional MCP tools
-- Auto-uses globally configured MCP servers and Skills
+- **🔧 MCP Server Support** - Auto-uses globally configured MCP servers (`~/.kiro/settings/mcp.json`)
 - Shows tool call progress + final response
 - Concurrency control (one request per session at a time)
 - Auto-restart on kiro-cli process failure
@@ -142,17 +141,22 @@ cp .env.example .env
 | `BOT_NAME` | Yes | Bot display name (for @mention detection) |
 | `KIRO_CLI_PATH` | No | kiro-cli path (default: kiro-cli) |
 | `WORKING_DIR` | No | Workspace root path (default: /tmp/feishu-kirocli-bot-workspaces) |
-| `MCP_SERVERS` | No | Additional MCP server config (JSON array) |
 | `IDLE_TIMEOUT` | No | Idle timeout in seconds (default: 300, 0=disabled) |
 | `DEBUG` | No | Debug mode (default: false) |
 
 ### MCP Server Configuration
 
-Optionally configure additional MCP tool servers (globally configured MCP servers are auto-available):
+MCP servers must be configured globally via kiro-cli (not through this bot's config):
 
 ```bash
-MCP_SERVERS='[{"name": "github", "serverType": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"]}]'
+# Add an MCP server
+kiro-cli mcp add --name memory --command npx --args '"-y","@modelcontextprotocol/server-memory"' --scope global
+
+# List configured servers
+kiro-cli mcp list
 ```
+
+The bot will automatically use all MCP servers configured in `~/.kiro/settings/mcp.json`.
 
 ## Running
 

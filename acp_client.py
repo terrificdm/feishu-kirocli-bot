@@ -46,9 +46,8 @@ PermissionHandler = Callable[[PermissionRequest], str | None]
 
 
 class ACPClient:
-    def __init__(self, cli_path: str = "kiro-cli", mcp_servers: list[dict] | None = None):
+    def __init__(self, cli_path: str = "kiro-cli"):
         self._cli_path = cli_path
-        self._mcp_servers = mcp_servers or []
         self._proc: subprocess.Popen | None = None
         self._req_id = 0
         self._lock = threading.Lock()
@@ -153,9 +152,11 @@ class ACPClient:
 
     def session_new(self, cwd: str) -> tuple[str, dict]:
         """Create a new ACP session, returns (sessionId, modes)."""
+        # Note: MCP servers must be configured globally via ~/.kiro/settings/mcp.json
+        # kiro-cli's ACP only uses MCP servers from global config, not from this parameter
         result = self._send_request("session/new", {
             "cwd": cwd,
-            "mcpServers": self._mcp_servers,
+            "mcpServers": [],  # Required field, but kiro only uses global config
         })
         session_id = result.get("sessionId", "")
         if not session_id:
@@ -180,7 +181,7 @@ class ACPClient:
         result = self._send_request("session/load", {
             "sessionId": session_id,
             "cwd": cwd,
-            "mcpServers": self._mcp_servers,
+            "mcpServers": [],  # Required field, but kiro only uses global config
         })
         
         # Update modes if returned
