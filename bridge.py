@@ -115,7 +115,15 @@ class Bridge:
             self._acp = ACPClient(
                 cli_path=self._config.KIRO_CLI_PATH,
             )
-            self._acp.start()
+            
+            # Determine kiro-cli working directory
+            # In fixed mode, use WORKING_DIR so kiro-cli reads .kiro/settings/mcp.json from there
+            # In per_chat mode, use None (inherit current directory)
+            kiro_cwd = self._config.WORKING_DIR if self._config.WORKSPACE_MODE == "fixed" else None
+            self._acp.start(cwd=kiro_cwd)
+            if kiro_cwd:
+                log.info("[Bridge] kiro-cli started with cwd: %s", kiro_cwd)
+            
             self._acp.on_permission_request(self._handle_permission)
             
             # Clear old sessions since we're starting fresh
@@ -596,8 +604,15 @@ class Bridge:
                     self._acp = None
 
     def _get_or_create_session(self, chat_id: str, acp: ACPClient) -> str:
-        # Create workspace directory
-        work_dir = os.path.join(self._config.WORKING_DIR, chat_id)
+        # Determine workspace directory based on mode
+        if self._config.WORKSPACE_MODE == "fixed":
+            # Fixed mode: all chats share the same directory
+            # Useful for project-specific .kiro config (MCP servers, skills, etc.)
+            work_dir = self._config.WORKING_DIR
+        else:
+            # Per-chat mode (default): each chat gets its own subdirectory
+            work_dir = os.path.join(self._config.WORKING_DIR, chat_id)
+        
         os.makedirs(work_dir, exist_ok=True)
 
         with self._sessions_lock:
@@ -613,6 +628,7 @@ class Bridge:
                     # Fall through to create new session
 
         session_id, modes = acp.session_new(work_dir)
+        log.info("[Bridge] Created new session %s for chat %s (cwd: %s)", session_id, chat_id, work_dir)
 
         with self._sessions_lock:
             self._sessions[chat_id] = session_id

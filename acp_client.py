@@ -80,10 +80,17 @@ class ACPClient:
 
     # ── Lifecycle ──
 
-    def start(self):
-        """Start kiro-cli acp subprocess and initialize the connection."""
+    def start(self, cwd: str | None = None):
+        """Start kiro-cli acp subprocess and initialize the connection.
+        
+        Args:
+            cwd: Working directory for kiro-cli process. If specified, kiro-cli
+                 will read workspace config (.kiro/settings/mcp.json) from this
+                 directory instead of the current working directory.
+        """
         self._proc = subprocess.Popen(
             [self._cli_path, "acp"],
+            cwd=cwd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

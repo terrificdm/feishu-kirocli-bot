@@ -140,23 +140,33 @@ cp .env.example .env
 | `FEISHU_APP_SECRET` | Yes | Feishu App Secret |
 | `BOT_NAME` | Yes | Bot display name (for @mention detection) |
 | `KIRO_CLI_PATH` | No | kiro-cli path (default: kiro-cli) |
+| `WORKSPACE_MODE` | No | Workspace mode: `per_chat` (default) or `fixed` |
 | `WORKING_DIR` | No | Workspace root path (default: /tmp/feishu-kirocli-bot-workspaces) |
 | `IDLE_TIMEOUT` | No | Idle timeout in seconds (default: 300, 0=disabled) |
 | `DEBUG` | No | Debug mode (default: false) |
 
+### Workspace Modes
+
+- **per_chat** (default): Each chat gets its own subdirectory under `WORKING_DIR`. Suitable for multi-user scenarios where each user needs isolated workspace.
+
+- **fixed**: All chats share the same `WORKING_DIR`. Suitable for project-specific use cases — point to an existing project directory to let Kiro work with its files and use project-level `.kiro/` configurations.
+
 ### MCP Server Configuration
 
-MCP servers must be configured globally via kiro-cli (not through this bot's config):
+MCP servers can be configured at two levels:
+
+1. **Global** (`~/.kiro/settings/mcp.json`): Available in all modes
+2. **Workspace** (`{WORKING_DIR}/.kiro/settings/mcp.json`): Only in `fixed` mode
+
+For `fixed` mode, you can place `.kiro/settings/mcp.json` and `.kiro/skills/` in your `WORKING_DIR` to use project-specific MCP servers and skills.
 
 ```bash
-# Add an MCP server
+# Add an MCP server globally
 kiro-cli mcp add --name memory --command npx --args '"-y","@modelcontextprotocol/server-memory"' --scope global
 
 # List configured servers
 kiro-cli mcp list
 ```
-
-The bot will automatically use all MCP servers configured in `~/.kiro/settings/mcp.json`.
 
 ## Running
 

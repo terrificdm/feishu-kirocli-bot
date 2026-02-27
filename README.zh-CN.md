@@ -140,23 +140,33 @@ cp .env.example .env
 | `FEISHU_APP_SECRET` | 是 | 飞书应用 App Secret |
 | `BOT_NAME` | 是 | 机器人显示名称（用于 @提及检测） |
 | `KIRO_CLI_PATH` | 否 | kiro-cli 路径（默认：kiro-cli） |
+| `WORKSPACE_MODE` | 否 | 工作空间模式：`per_chat`（默认）或 `fixed` |
 | `WORKING_DIR` | 否 | 工作目录根路径（默认：/tmp/feishu-kirocli-bot-workspaces） |
 | `IDLE_TIMEOUT` | 否 | 空闲超时秒数（默认：300，0=禁用） |
 | `DEBUG` | 否 | 调试模式（默认：false） |
 
+### 工作空间模式
+
+- **per_chat**（默认）：每个会话在 `WORKING_DIR` 下有独立子目录。适合多用户场景，每个用户有独立的工作空间。
+
+- **fixed**：所有会话共享同一个 `WORKING_DIR`。适合项目特定场景 — 指向一个现有项目目录，让 Kiro 操作其中的文件，并使用项目级的 `.kiro/` 配置。
+
 ### MCP 服务器配置
 
-MCP 服务器需要通过 kiro-cli 全局配置（不能通过本项目的配置文件）：
+MCP 服务器可在两个级别配置：
+
+1. **全局**（`~/.kiro/settings/mcp.json`）：所有模式都可用
+2. **工作空间**（`{WORKING_DIR}/.kiro/settings/mcp.json`）：仅 `fixed` 模式
+
+在 `fixed` 模式下，可以在 `WORKING_DIR` 目录放置 `.kiro/settings/mcp.json` 和 `.kiro/skills/`，使用项目特定的 MCP 服务器和技能。
 
 ```bash
-# 添加 MCP 服务器
+# 全局添加 MCP 服务器
 kiro-cli mcp add --name memory --command npx --args '"-y","@modelcontextprotocol/server-memory"' --scope global
 
 # 查看已配置的服务器
 kiro-cli mcp list
 ```
-
-机器人会自动使用 `~/.kiro/settings/mcp.json` 中配置的所有 MCP 服务器。
 
 ## 运行
 

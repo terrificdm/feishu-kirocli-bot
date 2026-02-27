@@ -17,11 +17,19 @@ class Config:
     # Idle timeout in seconds (0 = never timeout)
     IDLE_TIMEOUT: int = int(os.getenv("IDLE_TIMEOUT", "300"))  # Default 5 minutes
     
-    # Note: MCP servers must be configured globally via ~/.kiro/settings/mcp.json
-    # kiro-cli's ACP implementation only uses MCP servers from global config
+    # Workspace mode: "per_chat" (default) or "fixed"
+    # - per_chat: Each chat gets its own subdirectory under WORKING_DIR
+    # - fixed: All chats share the same WORKING_DIR (useful for project-specific .kiro config)
+    WORKSPACE_MODE: str = os.getenv("WORKSPACE_MODE", "per_chat").lower()
+    
+    # Note: MCP servers can be configured via:
+    # - Global: ~/.kiro/settings/mcp.json
+    # - Workspace: {WORKING_DIR}/.kiro/settings/mcp.json (use WORKSPACE_MODE=fixed)
 
     def validate(self):
         assert self.FEISHU_APP_ID, "FEISHU_APP_ID is required"
         assert self.FEISHU_APP_SECRET, "FEISHU_APP_SECRET is required"
         assert self.BOT_NAME, "BOT_NAME is required"
         assert shutil.which(self.KIRO_CLI_PATH), f"kiro-cli not found at: {self.KIRO_CLI_PATH}"
+        assert self.WORKSPACE_MODE in ("per_chat", "fixed"), \
+            f"WORKSPACE_MODE must be 'per_chat' or 'fixed', got: {self.WORKSPACE_MODE}"
