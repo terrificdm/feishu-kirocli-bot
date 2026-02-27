@@ -164,7 +164,7 @@ python bridge.py
 
 - **Group chat**: @bot + your question
 - **Private chat**: Send message directly
-- **Cancel**: Send "cancel" or "取消" to interrupt current operation
+- **Cancel**: Send "cancel" to interrupt current operation
 - **Permission approval**: Reply y/n/t when permission request received
 
 ### Commands

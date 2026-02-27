@@ -182,7 +182,7 @@ class Bridge:
         chat_id = self._session_to_chat.get(session_id)
         if not chat_id:
             log.warning("[Bridge] No chat_id found for session %s, auto-denying", session_id)
-            return "reject_once"
+            return "deny"
 
         # Format the permission request message
         icon = "🔐"
@@ -213,7 +213,7 @@ class Bridge:
             # Timeout
             self._bot.send_text(chat_id, "⏱️ Timeout, auto-denied")
             log.warning("[Bridge] Permission request timed out for: %s", request.title)
-            return "reject_once"
+            return "deny"
         finally:
             with self._pending_permissions_lock:
                 self._pending_permissions.pop(chat_id, None)
@@ -249,7 +249,7 @@ class Bridge:
                 evt.set()
                 return
             elif text_lower in ('n', 'no'):
-                result_holder.append("reject_once")
+                result_holder.append("deny")
                 evt.set()
                 return
             elif text_lower in ('t', 'trust', 'always'):
@@ -654,10 +654,12 @@ class Bridge:
 
 
 def main():
-    logging.basicConfig(
-        level=logging.DEBUG if Config.DEBUG else logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-    )
+    log_level = logging.DEBUG if Config.DEBUG else logging.INFO
+    log_format = "%(asctime)s %(levelname)s %(message)s"
+    handlers = [logging.StreamHandler()]
+    if Config.LOG_FILE:
+        handlers.append(logging.FileHandler(Config.LOG_FILE, encoding="utf-8"))
+    logging.basicConfig(level=log_level, format=log_format, handlers=handlers)
 
     config = Config()
     config.validate()

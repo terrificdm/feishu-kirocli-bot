@@ -13,6 +13,7 @@ class Config:
     KIRO_CLI_PATH: str = os.getenv("KIRO_CLI_PATH", "kiro-cli")
     WORKING_DIR: str = os.getenv("WORKING_DIR", "/tmp/feishu-kirocli-bot-workspaces")
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
+    LOG_FILE: str = os.getenv("LOG_FILE", "")
     
     # Idle timeout in seconds (0 = never timeout)
     IDLE_TIMEOUT: int = int(os.getenv("IDLE_TIMEOUT", "300"))  # Default 5 minutes
