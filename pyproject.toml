@@ -8,5 +8,8 @@ dependencies = [
     "python-dotenv>=1.0.0",
 ]
 
+[tool.setuptools]
+py-modules = ["bridge", "config", "acp_client", "feishu_bot"]
+
 [project.scripts]
 feishu-kirocli-bot = "bridge:main"
