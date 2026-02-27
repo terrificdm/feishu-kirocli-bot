@@ -68,13 +68,58 @@ Set `IDLE_TIMEOUT=0` to disable auto-shutdown.
 ## Feishu App Configuration
 
 1. Create an enterprise app on [Feishu Open Platform](https://open.feishu.cn/app)
-2. Add "Bot" capability
-3. Configure permissions:
-   - `im:message` - Send and receive messages
-   - `im:message.group_at_msg` - Receive group @messages
-4. Event subscription → Enable WebSocket mode
-5. Subscribe to event: `im.message.receive_v1`
-6. Publish the app
+   - Click **Create Enterprise Self-Built App**
+   - Fill in app name and description
+
+2. Get credentials: In **Credentials & Basic Info**, copy **App ID** (format: `cli_xxx`) and **App Secret** into your `.env` file
+
+3. Add "Bot" capability: In **App Features** > **Bot**, enable bot — `BOT_NAME` in your `.env` must match the bot's display name in Feishu (usually the same as the app name)
+
+4. Configure permissions (you can bulk import via the Feishu Open Platform permissions page):
+   - `im:message` - Read and write messages (base permission)
+   - `im:message:send_as_bot` - Send messages as bot
+   - `im:message:readonly` - Read message history
+   - `im:message.group_at_msg:readonly` - Receive group @messages
+   - `im:message.p2p_msg:readonly` - Receive private chat messages
+   - `im:chat.access_event.bot_p2p_chat:read` - Private chat events
+   - `im:chat.members:bot_access` - Bot group membership access
+   - `im:resource` - Access message resources (images, files, etc.)
+
+   <details>
+   <summary>Bulk import JSON</summary>
+
+   ```json
+   {
+     "scopes": {
+       "tenant": [
+         "im:message",
+         "im:message:send_as_bot",
+         "im:message:readonly",
+         "im:message.group_at_msg:readonly",
+         "im:message.p2p_msg:readonly",
+         "im:chat.access_event.bot_p2p_chat:read",
+         "im:chat.members:bot_access",
+         "im:resource"
+       ],
+       "user": []
+     }
+   }
+   ```
+
+   </details>
+
+5. Start the bot first (required for event subscription to save):
+   ```bash
+   python bridge.py
+   ```
+   The bot only connects to Feishu WebSocket — it won't receive any messages yet, but the connection is needed for the next step.
+
+6. Event subscription: In **Event Subscription**, select **Use long connection to receive events** (WebSocket) — no public webhook URL required
+   - Add event: `im.message.receive_v1`
+
+7. Publish the app: In **Version Management & Release**, create a version and publish
+   - Enterprise self-built apps are usually auto-approved
+   - Permission changes require publishing a new version to take effect
 
 ## Installation
 

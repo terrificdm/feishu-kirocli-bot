@@ -68,13 +68,58 @@
 ## 飞书应用配置
 
 1. 在 [飞书开放平台](https://open.feishu.cn/app) 创建企业自建应用
-2. 添加「机器人」能力
-3. 配置权限：
-   - `im:message` - 发送和接收消息
-   - `im:message.group_at_msg` - 接收群内 @消息
-4. 事件订阅 → 启用 WebSocket 模式
-5. 订阅事件：`im.message.receive_v1`
-6. 发布应用
+   - 点击 **创建企业自建应用**
+   - 填写应用名称和描述
+
+2. 获取凭据：在 **凭证与基础信息** 中，复制 **App ID**（格式：`cli_xxx`）和 **App Secret** 填入 `.env` 文件
+
+3. 添加「机器人」能力：在 **应用功能** > **机器人** 中启用机器人 — `.env` 中的 `BOT_NAME` 必须与机器人在飞书中的显示名称一致（通常与应用名称相同）
+
+4. 配置权限（可在飞书开放平台权限页面批量导入）：
+   - `im:message` - 收发消息（基础权限）
+   - `im:message:send_as_bot` - 以机器人身份发送消息
+   - `im:message:readonly` - 读取消息历史
+   - `im:message.group_at_msg:readonly` - 接收群内 @消息
+   - `im:message.p2p_msg:readonly` - 接收私聊消息
+   - `im:chat.access_event.bot_p2p_chat:read` - 私聊事件
+   - `im:chat.members:bot_access` - 机器人群成员访问
+   - `im:resource` - 访问消息资源（图片、文件等）
+
+   <details>
+   <summary>批量导入 JSON</summary>
+
+   ```json
+   {
+     "scopes": {
+       "tenant": [
+         "im:message",
+         "im:message:send_as_bot",
+         "im:message:readonly",
+         "im:message.group_at_msg:readonly",
+         "im:message.p2p_msg:readonly",
+         "im:chat.access_event.bot_p2p_chat:read",
+         "im:chat.members:bot_access",
+         "im:resource"
+       ],
+       "user": []
+     }
+   }
+   ```
+
+   </details>
+
+5. 先启动程序（事件订阅保存需要先建立连接）：
+   ```bash
+   python bridge.py
+   ```
+   此时程序只连接飞书 WebSocket，还不会收到任何消息，但下一步需要这个连接。
+
+6. 事件订阅：在 **事件订阅** 中，选择 **使用长连接接收事件**（WebSocket）— 无需公网 webhook 地址
+   - 添加事件：`im.message.receive_v1`
+
+7. 发布应用：在 **版本管理与发布** 中创建版本并发布
+   - 企业自建应用通常自动审批通过
+   - 权限变更后需发布新版本才能生效
 
 ## 安装
 
