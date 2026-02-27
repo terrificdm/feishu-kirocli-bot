@@ -17,9 +17,6 @@ log = logging.getLogger(__name__)
 # Max feishu message length
 _MAX_MSG_LEN = 28000
 
-# Session persistence file
-_SESSIONS_FILE = "sessions.json"
-
 # Permission request timeout (seconds)
 _PERMISSION_TIMEOUT = 60
 
@@ -126,7 +123,6 @@ class Bridge:
             with self._sessions_lock:
                 self._sessions.clear()
             self._session_to_chat.clear()
-            self._save_sessions()
             
             self._last_activity = time.time()
             log.info("[Bridge] kiro-cli acp started")
@@ -143,7 +139,6 @@ class Bridge:
                 with self._sessions_lock:
                     self._sessions.clear()
                 self._session_to_chat.clear()
-                self._save_sessions()
                 
                 log.info("[Bridge] kiro-cli acp stopped")
 
@@ -549,7 +544,7 @@ class Bridge:
             self._session_to_chat[session_id] = chat_id
 
             # Send prompt to Kiro (WIP: images disabled)
-            max_retries = 1
+            max_retries = 3
             last_error = None
             for attempt in range(max_retries):
                 try:
@@ -595,7 +590,6 @@ class Bridge:
             # If session errored, remove it so next message creates a new one
             with self._sessions_lock:
                 self._sessions.pop(chat_id, None)
-            self._save_sessions()
             # Check if ACP process died
             with self._acp_lock:
                 if self._acp is not None and not self._acp.is_running():
@@ -624,33 +618,7 @@ class Bridge:
         with self._sessions_lock:
             self._sessions[chat_id] = session_id
         self._session_to_chat[session_id] = chat_id
-        self._save_sessions()
         return session_id
-
-    def _load_sessions(self):
-        """Load persisted sessions from disk."""
-        sessions_path = os.path.join(self._config.WORKING_DIR, _SESSIONS_FILE)
-        if os.path.exists(sessions_path):
-            try:
-                with open(sessions_path) as f:
-                    self._sessions = json.load(f)
-                # Rebuild session_to_chat mapping
-                for chat_id, session_id in self._sessions.items():
-                    self._session_to_chat[session_id] = chat_id
-                log.info("[Bridge] Loaded %d persisted sessions", len(self._sessions))
-            except Exception as e:
-                log.warning("[Bridge] Failed to load sessions: %s", e)
-
-    def _save_sessions(self):
-        """Save sessions to disk for persistence."""
-        os.makedirs(self._config.WORKING_DIR, exist_ok=True)
-        sessions_path = os.path.join(self._config.WORKING_DIR, _SESSIONS_FILE)
-        try:
-            with open(sessions_path, "w") as f:
-                json.dump(self._sessions, f)
-            log.debug("[Bridge] Saved %d sessions", len(self._sessions))
-        except Exception as e:
-            log.error("[Bridge] Failed to save sessions: %s", e)
 
 
 def main():

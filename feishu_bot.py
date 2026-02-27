@@ -72,56 +72,29 @@ class FeishuBot:
             if not resp.success():
                 log.error("[Feishu] Send failed: %s %s", resp.code, resp.msg)
 
-    def send_card(self, chat_id: str, markdown_text: str, title: str = None):
-        """Send an interactive card message with markdown support."""
-        # Build card elements from markdown
+    def _build_card(self, markdown_text: str, title: str = None) -> dict:
+        """Build a Feishu interactive card from markdown text."""
         elements = []
-        
-        # Split by code blocks to handle them specially
         parts = markdown_text.split("```")
         for i, part in enumerate(parts):
             if i % 2 == 0:
-                # Regular markdown text
                 if part.strip():
-                    elements.append({
-                        "tag": "markdown",
-                        "content": part.strip()
-                    })
+                    elements.append({"tag": "markdown", "content": part.strip()})
             else:
-                # Code block - first line might be language
                 lines = part.split("\n", 1)
                 lang = lines[0].strip() if lines else ""
                 code = lines[1] if len(lines) > 1 else part
-                # Use markdown code block in card
-                elements.append({
-                    "tag": "markdown",
-                    "content": f"```{lang}\n{code.strip()}\n```"
-                })
-        
-        # If no elements, add the original text
+                elements.append({"tag": "markdown", "content": f"```{lang}\n{code.strip()}\n```"})
         if not elements:
-            elements.append({
-                "tag": "markdown", 
-                "content": markdown_text
-            })
-        
-        # Build card structure (Feishu card format)
-        card = {
-            "config": {
-                "wide_screen_mode": True
-            },
-            "elements": elements
-        }
-        
-        # Add header if title provided
+            elements.append({"tag": "markdown", "content": markdown_text})
+        card = {"config": {"wide_screen_mode": True}, "elements": elements}
         if title:
-            card["header"] = {
-                "title": {
-                    "tag": "plain_text",
-                    "content": title
-                }
-            }
-        
+            card["header"] = {"title": {"tag": "plain_text", "content": title}}
+        return card
+
+    def send_card(self, chat_id: str, markdown_text: str, title: str = None):
+        """Send an interactive card message with markdown support."""
+        card = self._build_card(markdown_text, title)
         body = CreateMessageRequestBody.builder() \
             .receive_id(chat_id) \
             .msg_type("interactive") \
@@ -134,7 +107,6 @@ class FeishuBot:
         resp = self._client.im.v1.message.create(req)
         if not resp.success():
             log.error("[Feishu] Send card failed: code=%s msg=%s", resp.code, resp.msg)
-            # Fallback to plain text
             self.send_plain_text(chat_id, markdown_text)
             return None
         else:
@@ -146,25 +118,7 @@ class FeishuBot:
         if not message_id:
             log.warning("[Feishu] Cannot update card: no message_id")
             return
-        
-        # Build card elements (same as send_card)
-        elements = []
-        parts = markdown_text.split("```")
-        for i, part in enumerate(parts):
-            if i % 2 == 0:
-                if part.strip():
-                    elements.append({"tag": "markdown", "content": part.strip()})
-            else:
-                lines = part.split("\n", 1)
-                lang = lines[0].strip() if lines else ""
-                code = lines[1] if len(lines) > 1 else part
-                elements.append({"tag": "markdown", "content": f"```{lang}\n{code.strip()}\n```"})
-        
-        if not elements:
-            elements.append({"tag": "markdown", "content": markdown_text})
-        
-        card = {"config": {"wide_screen_mode": True}, "elements": elements}
-        
+        card = self._build_card(markdown_text)
         body = PatchMessageRequestBody.builder() \
             .content(json.dumps(card, ensure_ascii=False)) \
             .build()

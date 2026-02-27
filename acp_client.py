@@ -66,8 +66,6 @@ class ACPClient:
         self._session_models: dict[str, dict] = {}
         # session_id -> available commands (from _kiro.dev/commands/available)
         self._session_commands: dict[str, list] = {}
-        # Pending permission requests: msg_id -> (event, result_holder)
-        self._pending_permissions: dict = {}
         self._running = False
 
     def on_permission_request(self, handler: PermissionHandler):
