@@ -1,4 +1,4 @@
-# Feishu-KiroCLI Bridge
+# Feishu-KiroCLI Bot
 
 [English](README.md)
 

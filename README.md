@@ -1,4 +1,4 @@
-# Feishu-KiroCLI Bridge
+# Feishu-KiroCLI Bot
 
 [中文文档](README.zh-CN.md)
 
