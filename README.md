@@ -67,7 +67,7 @@ Set `IDLE_TIMEOUT=0` to disable auto-shutdown.
 
 ## Feishu App Configuration
 
-1. Create an enterprise app on [Feishu Open Platform](https://open.feishu.cn/)
+1. Create an enterprise app on [Feishu Open Platform](https://open.feishu.cn/app)
 2. Add "Bot" capability
 3. Configure permissions:
    - `im:message` - Send and receive messages
