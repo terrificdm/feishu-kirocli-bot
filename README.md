@@ -16,12 +16,12 @@ Feishu WebSocket ──→ Bridge ──→ kiro-cli acp (on-demand)
 
 - Real-time message receiving via Feishu WebSocket
 - Group chat: triggered by @bot mention; Private chat: direct processing
-- Independent workspace and session for each chat/user
+- **📁 Workspace Modes** - `per_chat` (isolated per user) or `fixed` (shared project directory)
 - **🔐 Interactive Permission Approval** - Kiro asks user (y/n/t) before sensitive operations
 - **⚡ On-Demand Startup** - kiro-cli starts only when message received, saves resources
 - **⏱️ Auto Idle Shutdown** - Configurable idle timeout to auto-stop kiro-cli
 - **🛑 Cancel Operation** - Send "cancel" to interrupt current operation
-- **🔧 MCP Server Support** - Auto-uses globally configured MCP servers (`~/.kiro/settings/mcp.json`)
+- **🔧 MCP & Skills Support** - Global or workspace-level config (`.kiro/settings/mcp.json`, `.kiro/skills/`)
 - Shows tool call progress + final response
 - Concurrency control (one request per session at a time)
 - Auto-restart on kiro-cli process failure
