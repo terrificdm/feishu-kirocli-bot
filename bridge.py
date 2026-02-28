@@ -233,11 +233,11 @@ class Bridge:
         text_stripped = text.strip()
         text_lower = text_stripped.lower()
 
-        # WIP: Image processing disabled - kiro sees images as blank
-        # TODO: Investigate image data quality issue
+        # Image processing - log details for debugging
         if images:
-            log.info("[Bridge] Received %d images, but image support is WIP", len(images))
-            images = None  # Ignore images for now
+            log.info("[Bridge] Received %d image(s)", len(images))
+            for i, (b64_data, mime) in enumerate(images):
+                log.info("[Bridge] Image %d: %s, base64 len=%d", i+1, mime, len(b64_data))
 
         # Check for permission response first
         with self._pending_permissions_lock:
@@ -275,7 +275,7 @@ class Bridge:
 
         threading.Thread(
             target=self._process_message,
-            args=(chat_id, chat_type, text, None),  # WIP: images disabled
+            args=(chat_id, chat_type, text, images),
             daemon=True,
         ).start()
 
@@ -550,12 +550,12 @@ class Bridge:
             # Track session -> chat mapping for permission requests
             self._session_to_chat[session_id] = chat_id
 
-            # Send prompt to Kiro (WIP: images disabled)
+            # Send prompt to Kiro with optional images
             max_retries = 3
-            last_error = None
+            last_error: Exception | None = None
             for attempt in range(max_retries):
                 try:
-                    result = acp.session_prompt(session_id, text, images=None)
+                    result = acp.session_prompt(session_id, text, images=images)
                     break
                 except RuntimeError as e:
                     last_error = e

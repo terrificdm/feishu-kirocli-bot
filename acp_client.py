@@ -159,11 +159,13 @@ class ACPClient:
 
     def session_new(self, cwd: str) -> tuple[str, dict]:
         """Create a new ACP session, returns (sessionId, modes)."""
-        # Note: MCP servers must be configured globally via ~/.kiro/settings/mcp.json
-        # kiro-cli's ACP only uses MCP servers from global config, not from this parameter
+        # Note: MCP servers are configured via filesystem, not ACP params:
+        # - Global: ~/.kiro/settings/mcp.json (always loaded)
+        # - Workspace: {cwd}/.kiro/settings/mcp.json (loaded if exists)
+        # Skills work similarly: ~/.kiro/skills/ or {cwd}/.kiro/skills/
         result = self._send_request("session/new", {
             "cwd": cwd,
-            "mcpServers": [],  # Required field, but kiro only uses global config
+            "mcpServers": [],  # Required field, but kiro reads from .kiro/ config files
         })
         session_id = result.get("sessionId", "")
         if not session_id:
@@ -188,7 +190,7 @@ class ACPClient:
         result = self._send_request("session/load", {
             "sessionId": session_id,
             "cwd": cwd,
-            "mcpServers": [],  # Required field, but kiro only uses global config
+            "mcpServers": [],  # Required field, but kiro reads from .kiro/ config files
         })
         
         # Update modes if returned
@@ -283,35 +285,28 @@ class ACPClient:
             prompt_content = []
             
             # Add images first (Kiro supports promptCapabilities.image: true)
-            # Kiro expects: {"kind": "image", "data": {"format": "jpeg", "source": {"kind": "bytes", "data": [...]}}}
+            # ACP spec: {"type": "image", "data": "<base64>", "mimeType": "image/jpeg"}
             if images:
                 for b64_data, mime_type in images:
-                    # Decode base64 to bytes, then to list of integers
-                    import base64 as b64mod
-                    raw_bytes = b64mod.b64decode(b64_data)
-                    byte_list = list(raw_bytes)
-                    # Extract format from mime_type: "image/jpeg" -> "jpeg"
-                    img_format = mime_type.split('/')[-1] if '/' in mime_type else mime_type
                     prompt_content.append({
-                        "kind": "image",
-                        "data": {
-                            "format": img_format,
-                            "source": {
-                                "kind": "bytes",
-                                "data": byte_list,
-                            }
-                        }
+                        "type": "image",
+                        "data": b64_data,
+                        "mimeType": mime_type,
                     })
-                    log.info("[ACP] Adding image: %s, %d bytes (raw)", mime_type, len(raw_bytes))
+                    log.info("[ACP] Adding image: %s, base64 len=%d", mime_type, len(b64_data))
             
-            # Add text if present
-            # Note: Kiro uses {"type": "text", "text": "..."} for text messages
+            # Add text content
+            # NOTE: Kiro requires at least one text block even for image-only messages.
+            # Sending only images without text causes "Internal error" from Kiro.
+            # Workaround: add "?" as minimal text when user sends image without text.
             if text:
                 prompt_content.append({"type": "text", "text": text})
+            elif images:
+                prompt_content.append({"type": "text", "text": "?"})
             
             # Need at least one content block
             if not prompt_content:
-                prompt_content.append({"kind": "text", "data": ""})
+                prompt_content.append({"type": "text", "text": ""})
             
             # Note: Kiro uses "prompt" instead of "content" (differs from ACP spec)
             result = self._send_request_with_id("session/prompt", {
