@@ -4,6 +4,10 @@
 
 Bridge Feishu (Lark) group/private chat messages to Kiro CLI via ACP protocol.
 
+> **Which repo to use?**
+> - **This repo** (`feishu-kirocli-bot`): Feishu only, lightweight and simple.
+> - [`kirocli-bot-gateway`](https://github.com/terrificdm/kirocli-bot-gateway): Multi-platform (Feishu + Discord + more). Use this if you need multiple platforms or plan to expand later.
+
 ## Architecture
 
 ```
@@ -119,6 +123,8 @@ Set `IDLE_TIMEOUT=0` to disable auto-shutdown.
 7. Publish the app: In **Version Management & Release**, create a version and publish
    - Enterprise self-built apps are usually auto-approved
    - Permission changes require publishing a new version to take effect
+
+> ⚠️ **External Group Limitation**: Due to Feishu's access control, the bot can **only** be added to internal enterprise groups by default. For external groups, see Feishu documentation.
 
 ## Installation
 
