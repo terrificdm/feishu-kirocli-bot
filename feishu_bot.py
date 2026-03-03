@@ -3,6 +3,8 @@
 import base64
 import json
 import logging
+import time
+import threading
 from typing import Callable
 
 import lark_oapi as lark
@@ -27,6 +29,12 @@ class FeishuBot:
         self._on_message: Callable | None = None
         # Lark API client for sending messages
         self._client = lark.Client.builder().app_id(app_id).app_secret(app_secret).build()
+        
+        # Message dedup: message_id -> timestamp
+        self._seen_msgs: dict[str, float] = {}
+        self._seen_msgs_lock = threading.Lock()
+        self._DEDUP_MAX_SIZE = 1000
+        self._DEDUP_TTL = 300  # 5 minutes
 
     def on_message(self, handler: Callable):
         """Register message handler: handler(chat_id, chat_type, text, mentions_bot)"""
@@ -87,7 +95,11 @@ class FeishuBot:
                 elements.append({"tag": "markdown", "content": f"```{lang}\n{code.strip()}\n```"})
         if not elements:
             elements.append({"tag": "markdown", "content": markdown_text})
-        card = {"config": {"wide_screen_mode": True}, "elements": elements}
+        card = {
+            "schema": "2.0",
+            "config": {"wide_screen_mode": True},
+            "body": {"elements": elements},
+        }
         if title:
             card["header"] = {"title": {"tag": "plain_text", "content": title}}
         return card
@@ -131,6 +143,30 @@ class FeishuBot:
             log.error("[Feishu] Update card failed: code=%s msg=%s", resp.code, resp.msg)
         else:
             log.info("[Feishu] Card updated successfully: %s", message_id)
+
+    def _dedup_check(self, message_id: str) -> bool:
+        """Check if message is new. Returns True if new, False if duplicate."""
+        now = time.time()
+        with self._seen_msgs_lock:
+            if message_id in self._seen_msgs:
+                log.debug("[Feishu] Dedup: skipping duplicate message %s", message_id)
+                return False
+            
+            self._seen_msgs[message_id] = now
+            
+            # Cleanup if over max size
+            if len(self._seen_msgs) > self._DEDUP_MAX_SIZE:
+                cutoff = now - self._DEDUP_TTL
+                expired = [k for k, v in self._seen_msgs.items() if v < cutoff]
+                for k in expired:
+                    del self._seen_msgs[k]
+                # If still over limit, remove oldest
+                if len(self._seen_msgs) > self._DEDUP_MAX_SIZE:
+                    oldest = sorted(self._seen_msgs.items(), key=lambda x: x[1])
+                    for k, _ in oldest[:len(self._seen_msgs) - self._DEDUP_MAX_SIZE]:
+                        del self._seen_msgs[k]
+        
+        return True
 
     def _download_image(self, message_id: str, image_key: str) -> tuple[bytes, str] | None:
         """Download image from Feishu. Returns (data, mime_type) or None."""
@@ -181,6 +217,10 @@ class FeishuBot:
             chat_type = msg.chat_type  # "p2p" or "group"
             msg_type = msg.message_type
             message_id = msg.message_id
+
+            # Dedup: skip if we've already seen this message
+            if not self._dedup_check(message_id):
+                return
 
             # Check if bot is mentioned (for group chats)
             mentions_bot = False

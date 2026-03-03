@@ -74,6 +74,8 @@ class Bridge:
         self._pending_permissions_lock = threading.Lock()
         # session_id -> chat_id mapping (for permission requests)
         self._session_to_chat: dict[str, str] = {}
+        # chat_id -> active card message_id (for streaming and permission reuse)
+        self._active_cards: dict[str, str] = {}
         # Idle checker thread
         self._idle_checker_stop = threading.Event()
         self._idle_checker_thread: threading.Thread | None = None
@@ -193,8 +195,12 @@ class Bridge:
         msg += "Reply: **y**(allow) / **n**(deny) / **t**(trust, always allow)\n"
         msg += f"⏱️ Auto-deny in {_PERMISSION_TIMEOUT}s if no response"
 
-        # Send to Feishu
-        self._bot.send_text(chat_id, msg)
+        # Update active card if available (keeps chronological order)
+        active_card = self._active_cards.get(chat_id)
+        if active_card:
+            self._bot.update_card(active_card, msg)
+        else:
+            self._bot.send_text(chat_id, msg)
         log.info("[Bridge] Sent permission request to chat %s: %s", chat_id, request.title)
 
         # Wait for user response
@@ -210,10 +216,18 @@ class Bridge:
                 if result_holder:
                     decision = result_holder[0]
                     log.info("[Bridge] User decision for %s: %s", request.title, decision)
+                    # Send new card below user's reply for the result
+                    if active_card:
+                        new_card = self._bot.send_card(chat_id, "🤔 Processing...")
+                        if new_card:
+                            self._active_cards[chat_id] = new_card
                     return decision
             
-            # Timeout
-            self._bot.send_text(chat_id, "⏱️ Timeout, auto-denied")
+            # Timeout - update card in place (no user message between)
+            if active_card:
+                self._bot.update_card(active_card, "⏱️ Timeout, auto-denied")
+            else:
+                self._bot.send_text(chat_id, "⏱️ Timeout, auto-denied")
             log.warning("[Bridge] Permission request timed out for: %s", request.title)
             return "deny"
         finally:
@@ -529,9 +543,37 @@ class Bridge:
     def _process_single_message(self, chat_id: str, text: str, images: list[tuple[str, str]] | None = None):
         """Process a single message."""
         thinking_msg_id = None
+        
+        # Streaming state
+        _stream_lock = threading.Lock()
+        _last_stream_update = [0.0]
+        _STREAM_INTERVAL = 1.5  # seconds between card updates (Feishu rate limit safe)
+        
+        def _on_stream(chunk: str, accumulated: str):
+            """Called from ACP read thread on each text chunk."""
+            current_card = self._active_cards.get(chat_id)
+            if not current_card:
+                return
+            now = time.time()
+            with _stream_lock:
+                elapsed = now - _last_stream_update[0]
+                if elapsed >= _STREAM_INTERVAL:
+                    _last_stream_update[0] = now
+                else:
+                    return
+            # Update card outside lock
+            try:
+                self._bot.update_card(current_card, accumulated + " ▌")
+            except Exception as e:
+                log.debug("[Bridge] Stream update error: %s", e)
+        
         try:
             # Send "Thinking..." and save message ID for later update
             thinking_msg_id = self._bot.send_card(chat_id, "🤔 Thinking...")
+            
+            # Store card handle for streaming and permission reuse
+            if thinking_msg_id:
+                self._active_cards[chat_id] = thinking_msg_id
 
             # Ensure ACP is running (start on demand)
             try:
@@ -550,12 +592,13 @@ class Bridge:
             # Track session -> chat mapping for permission requests
             self._session_to_chat[session_id] = chat_id
 
-            # Send prompt to Kiro with optional images
+            # Send prompt to Kiro with optional images and streaming
+            stream_cb = _on_stream if thinking_msg_id else None
             max_retries = 3
             last_error: Exception | None = None
             for attempt in range(max_retries):
                 try:
-                    result = acp.session_prompt(session_id, text, images=images)
+                    result = acp.session_prompt(session_id, text, images=images, on_stream=stream_cb)
                     break
                 except RuntimeError as e:
                     last_error = e
@@ -573,10 +616,11 @@ class Bridge:
             # Update activity time
             self._last_activity = time.time()
 
-            # Format response and update the "Thinking..." message
+            # Format response and update the card (use _active_cards for latest reference)
             response = format_response(result)
-            if thinking_msg_id:
-                self._bot.update_card(thinking_msg_id, response)
+            final_card = self._active_cards.get(chat_id) or thinking_msg_id
+            if final_card:
+                self._bot.update_card(final_card, response)
             else:
                 self._bot.send_text(chat_id, response)
 
@@ -588,9 +632,10 @@ class Bridge:
             else:
                 error_text = f"❌ Error: {e}"
             
-            # Update thinking message or send new one
-            if thinking_msg_id:
-                self._bot.update_card(thinking_msg_id, error_text)
+            # Update card (use _active_cards for latest reference)
+            error_card = self._active_cards.get(chat_id) or thinking_msg_id
+            if error_card:
+                self._bot.update_card(error_card, error_text)
             else:
                 self._bot.send_text(chat_id, error_text)
             
@@ -602,6 +647,10 @@ class Bridge:
                 if self._acp is not None and not self._acp.is_running():
                     log.warning("[Bridge] kiro-cli died, will restart on next message")
                     self._acp = None
+        
+        finally:
+            # Clean up active card reference
+            self._active_cards.pop(chat_id, None)
 
     def _get_or_create_session(self, chat_id: str, acp: ACPClient) -> str:
         # Determine workspace directory based on mode
