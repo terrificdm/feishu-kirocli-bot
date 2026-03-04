@@ -66,9 +66,10 @@ class Bridge:
         # chat_id -> True if currently processing
         self._processing: dict[str, bool] = {}
         self._processing_lock = threading.Lock()
-        # Message queue: chat_id -> list of (chat_type, text, images)
-        self._message_queue: dict[str, list] = {}
-        self._queue_lock = threading.Lock()
+        # Pending messages for debounce + collect: chat_id -> [(text, images)]
+        self._pending_messages: dict[str, list[tuple[str, list | None]]] = {}
+        self._pending_lock = threading.Lock()
+        self._debounce_timers: dict[str, threading.Timer] = {}
         # Pending permission requests: chat_id -> (event, result_holder)
         self._pending_permissions: dict[str, tuple[threading.Event, list]] = {}
         self._pending_permissions_lock = threading.Lock()
@@ -97,6 +98,11 @@ class Bridge:
         def shutdown(sig, frame):
             log.info("[Bridge] Shutting down...")
             self._idle_checker_stop.set()
+            # Cancel all debounce timers
+            with self._pending_lock:
+                for timer in self._debounce_timers.values():
+                    timer.cancel()
+                self._debounce_timers.clear()
             self._stop_acp()
             sys.exit(0)
 
@@ -287,35 +293,47 @@ class Bridge:
             self._handle_command(chat_id, text_stripped)
             return
 
-        threading.Thread(
-            target=self._process_message,
-            args=(chat_id, chat_type, text, images),
-            daemon=True,
-        ).start()
+        # Store in pending buffer for debounce + collect
+        with self._pending_lock:
+            if chat_id not in self._pending_messages:
+                self._pending_messages[chat_id] = []
+            pending = self._pending_messages[chat_id]
+            if len(pending) >= self._config.PENDING_CAP:
+                self._bot.send_text(chat_id,
+                                    f"⚠️ Too many pending messages (max {self._config.PENDING_CAP})")
+                return
+            pending.append((text, images))
+
+        with self._processing_lock:
+            is_busy = self._processing.get(chat_id, False)
+
+        if not is_busy:
+            self._reset_debounce(chat_id)
 
     def _handle_cancel(self, chat_id: str):
-        """Handle cancel request - cancels current operation and clears queue."""
-        # Clear the message queue for this chat
-        queue_cleared = 0
-        with self._queue_lock:
-            if chat_id in self._message_queue:
-                queue_cleared = len(self._message_queue[chat_id])
-                del self._message_queue[chat_id]
+        """Handle cancel request - cancels current operation and clears pending."""
+        # Cancel debounce timer and clear pending messages
+        pending_cleared = 0
+        with self._pending_lock:
+            timer = self._debounce_timers.pop(chat_id, None)
+            if timer:
+                timer.cancel()
+            pending_cleared = len(self._pending_messages.pop(chat_id, []))
         
         with self._sessions_lock:
             session_id = self._sessions.get(chat_id)
 
         if not session_id:
-            if queue_cleared:
-                self._bot.send_text(chat_id, f"🗑️ Cleared {queue_cleared} queued message(s)")
+            if pending_cleared:
+                self._bot.send_text(chat_id, f"🗑️ Cleared {pending_cleared} queued message(s)")
             else:
                 self._bot.send_text(chat_id, "❌ No active session")
             return
 
         with self._acp_lock:
             if self._acp is None or not self._acp.is_running():
-                if queue_cleared:
-                    self._bot.send_text(chat_id, f"🗑️ Cleared {queue_cleared} queued message(s)")
+                if pending_cleared:
+                    self._bot.send_text(chat_id, f"🗑️ Cleared {pending_cleared} queued message(s)")
                 else:
                     self._bot.send_text(chat_id, "❌ Kiro is not running")
                 return
@@ -324,8 +342,8 @@ class Bridge:
         try:
             acp.session_cancel(session_id)
             msg = "⏹️ Cancel request sent"
-            if queue_cleared:
-                msg += f"\n🗑️ Cleared {queue_cleared} queued message(s)"
+            if pending_cleared:
+                msg += f"\n🗑️ Cleared {pending_cleared} queued message(s)"
             self._bot.send_text(chat_id, msg)
         except Exception as e:
             log.error("[Bridge] Cancel failed: %s", e)
@@ -496,49 +514,76 @@ class Bridge:
 • /help - Show this help"""
         self._bot.send_text(chat_id, help_text)
 
-    def _process_message(self, chat_id: str, chat_type: str, text: str, images: list[tuple[str, str]] | None = None):
-        """Process a message, queuing if another is in progress."""
-        # Check if already processing for this chat
+    def _reset_debounce(self, chat_id: str):
+        """Start or reset the debounce timer for a chat."""
+        with self._pending_lock:
+            old_timer = self._debounce_timers.get(chat_id)
+            if old_timer:
+                old_timer.cancel()
+            timer = threading.Timer(
+                self._config.DEBOUNCE,
+                self._debounce_fire,
+                args=(chat_id,),
+            )
+            timer.daemon = True
+            self._debounce_timers[chat_id] = timer
+            timer.start()
+
+    def _debounce_fire(self, chat_id: str):
+        """Called when debounce timer expires. Starts processing in a new thread."""
+        with self._pending_lock:
+            self._debounce_timers.pop(chat_id, None)
+        threading.Thread(
+            target=self._process_message,
+            args=(chat_id,),
+            daemon=True,
+        ).start()
+
+    @staticmethod
+    def _merge_messages(messages: list[tuple[str, list | None]]) -> tuple[str, list | None]:
+        """Merge multiple pending messages into a single prompt."""
+        if len(messages) == 1:
+            return messages[0]
+
+        texts = [text for text, _ in messages if text]
+        all_images: list = []
+        for _, images in messages:
+            if images:
+                all_images.extend(images)
+
+        merged_text = "\n".join(texts)
+        return merged_text, all_images or None
+
+    def _process_message(self, chat_id: str):
+        """Process pending messages with collect semantics."""
         with self._processing_lock:
             if self._processing.get(chat_id):
-                # Queue the message
-                with self._queue_lock:
-                    if chat_id not in self._message_queue:
-                        self._message_queue[chat_id] = []
-                    queue = self._message_queue[chat_id]
-                    if len(queue) < 5:  # Max 5 queued
-                        queue.append((chat_type, text, images))
-                        self._bot.send_text(chat_id, f"📥 Queued #{len(queue)}, will process soon\n💡 Send 'cancel' to clear queue")
-                        log.info("[Bridge] Message queued for chat %s, queue size: %d", chat_id, len(queue))
-                    else:
-                        self._bot.send_text(chat_id, "⚠️ Queue full (max 5), please wait")
-                return
+                return  # Another thread is already processing; it will drain pending
             self._processing[chat_id] = True
 
-        # Process messages in a loop (current + queued)
         try:
-            self._process_message_loop(chat_id, chat_type, text, images)
+            self._process_message_loop(chat_id)
         finally:
             with self._processing_lock:
                 self._processing[chat_id] = False
+            # Race condition fix: if new messages arrived while we were finishing,
+            # kick off another debounce so they don't get stuck in pending.
+            with self._pending_lock:
+                if self._pending_messages.get(chat_id):
+                    self._reset_debounce(chat_id)
 
-    def _process_message_loop(self, chat_id: str, chat_type: str, text: str, images: list[tuple[str, str]] | None = None):
-        """Process current message and any queued messages."""
+    def _process_message_loop(self, chat_id: str):
+        """Drain and process pending messages in a loop."""
         while True:
-            # Process current message
+            with self._pending_lock:
+                messages = self._pending_messages.pop(chat_id, [])
+            if not messages:
+                break
+
+            text, images = self._merge_messages(messages)
+            if len(messages) > 1:
+                log.info("[Bridge] Merged %d messages into one prompt for chat %s", len(messages), chat_id)
             self._process_single_message(chat_id, text, images)
-            
-            # Check for queued messages
-            with self._queue_lock:
-                queue = self._message_queue.get(chat_id, [])
-                if not queue:
-                    # No more messages
-                    if chat_id in self._message_queue:
-                        del self._message_queue[chat_id]
-                    break
-                # Get next message from queue
-                chat_type, text, images = queue.pop(0)
-                log.info("[Bridge] Processing queued message for chat %s, remaining: %d", chat_id, len(queue))
 
     def _process_single_message(self, chat_id: str, text: str, images: list[tuple[str, str]] | None = None):
         """Process a single message."""

@@ -22,6 +22,11 @@ class Config:
     # - fixed: All chats share the same WORKING_DIR (useful for project-specific .kiro config)
     WORKSPACE_MODE: str = os.getenv("WORKSPACE_MODE", "per_chat").lower()
     
+    # Debounce: wait this many seconds after last message before processing
+    DEBOUNCE: float = float(os.getenv("DEBOUNCE", "1.0"))
+    # Max pending messages per chat before rejecting
+    PENDING_CAP: int = int(os.getenv("PENDING_CAP", "20"))
+    
     # Note: MCP servers can be configured via:
     # - Global: ~/.kiro/settings/mcp.json
     # - Workspace: {WORKING_DIR}/.kiro/settings/mcp.json (use WORKSPACE_MODE=fixed)
