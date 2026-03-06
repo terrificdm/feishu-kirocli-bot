@@ -16,6 +16,7 @@ class Config:
     
     # Idle timeout in seconds (0 = never timeout)
     IDLE_TIMEOUT: int = int(os.getenv("IDLE_TIMEOUT", "300"))  # Default 5 minutes
+    AUTO_APPROVE: bool = os.getenv("AUTO_APPROVE", "false").lower() in ("true", "1", "yes")
     
     # Workspace mode: "per_chat" (default) or "fixed"
     # - per_chat: Each chat gets its own subdirectory under WORKING_DIR

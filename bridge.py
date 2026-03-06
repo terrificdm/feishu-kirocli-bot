@@ -75,6 +75,8 @@ class Bridge:
         self._pending_permissions_lock = threading.Lock()
         # session_id -> chat_id mapping (for permission requests)
         self._session_to_chat: dict[str, str] = {}
+        # chat_id -> saved mode_id (for restoring agent after session_load)
+        self._session_modes: dict[str, str] = {}
         # chat_id -> active card message_id (for streaming and permission reuse)
         self._active_cards: dict[str, str] = {}
         # Idle checker thread
@@ -138,6 +140,7 @@ class Bridge:
             with self._sessions_lock:
                 self._sessions.clear()
             self._session_to_chat.clear()
+            self._session_modes.clear()
             
             self._last_activity = time.time()
             log.info("[Bridge] kiro-cli acp started")
@@ -154,6 +157,7 @@ class Bridge:
                 with self._sessions_lock:
                     self._sessions.clear()
                 self._session_to_chat.clear()
+                self._session_modes.clear()
                 
                 log.info("[Bridge] kiro-cli acp stopped")
 
@@ -186,6 +190,11 @@ class Bridge:
 
     def _handle_permission(self, request: PermissionRequest) -> str | None:
         """Handle permission request from Kiro - ask user via Feishu."""
+        # Auto-approve if configured
+        if config.AUTO_APPROVE:
+            log.info("[Bridge] Auto-approving permission request: %s", request.description)
+            return "allow"
+        
         session_id = request.session_id
         
         # Find chat_id for this session
@@ -426,6 +435,7 @@ class Bridge:
         # Switch mode
         try:
             result = acp.session_set_mode(session_id, mode_arg)
+            self._session_modes[chat_id] = mode_arg
             self._bot.send_text(chat_id, f"✅ Switched to agent: **{mode_arg}**")
         except Exception as e:
             log.error("[Bridge] Set mode failed: %s", e)
@@ -715,6 +725,13 @@ class Bridge:
                 # Try to load existing session
                 try:
                     acp.session_load(session_id, work_dir)
+                    # Restore agent selection (session_load resets mode to default)
+                    saved_mode = self._session_modes.get(chat_id)
+                    if saved_mode:
+                        try:
+                            acp.session_set_mode(session_id, saved_mode)
+                        except Exception as e:
+                            log.warning("[Bridge] Failed to restore mode '%s': %s", saved_mode, e)
                     log.info("[Bridge] Loaded existing session for chat %s", chat_id)
                     return session_id
                 except Exception as e:
