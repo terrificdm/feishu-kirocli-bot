@@ -79,6 +79,8 @@ class Bridge:
         self._session_modes: dict[str, str] = {}
         # chat_id -> active card message_id (for streaming and permission reuse)
         self._active_cards: dict[str, str] = {}
+        # chat_id -> message_id (for group chat reply)
+        self._reply_targets: dict[str, str] = {}
         # Idle checker thread
         self._idle_checker_stop = threading.Event()
         self._idle_checker_thread: threading.Thread | None = None
@@ -249,7 +251,7 @@ class Bridge:
             with self._pending_permissions_lock:
                 self._pending_permissions.pop(chat_id, None)
 
-    def _handle_message(self, chat_id: str, chat_type: str, text: str, mentions_bot: bool, images: list[tuple[str, str]] | None = None):
+    def _handle_message(self, chat_id: str, chat_type: str, text: str, mentions_bot: bool, images: list[tuple[str, str]] | None = None, message_id: str = ""):
         """Handle incoming Feishu message (called from event loop, must not block long).
         
         Args:
@@ -258,6 +260,7 @@ class Bridge:
             text: Text content
             mentions_bot: Whether bot was mentioned
             images: List of (base64_data, mime_type) tuples (WIP - currently ignored)
+            message_id: Original message ID (for group reply)
         """
         text_stripped = text.strip()
         text_lower = text_stripped.lower()
@@ -303,6 +306,9 @@ class Bridge:
             return
 
         # Store in pending buffer for debounce + collect
+        # Save message_id for group chat reply
+        if chat_type == "group" and message_id:
+            self._reply_targets[chat_id] = message_id
         with self._pending_lock:
             if chat_id not in self._pending_messages:
                 self._pending_messages[chat_id] = []
@@ -624,7 +630,8 @@ class Bridge:
         
         try:
             # Send "Thinking..." and save message ID for later update
-            thinking_msg_id = self._bot.send_card(chat_id, "🤔 Thinking...")
+            reply_to = self._reply_targets.pop(chat_id, "")
+            thinking_msg_id = self._bot.send_card(chat_id, "🤔 Thinking...", reply_to=reply_to)
             
             # Store card handle for streaming and permission reuse
             if thinking_msg_id:

@@ -14,6 +14,8 @@ from lark_oapi.api.im.v1 import (
     GetMessageResourceRequest,
     PatchMessageRequest,
     PatchMessageRequestBody,
+    ReplyMessageRequest,
+    ReplyMessageRequestBody,
     P2ImMessageReceiveV1,
 )
 from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
@@ -104,19 +106,32 @@ class FeishuBot:
             card["header"] = {"title": {"tag": "plain_text", "content": title}}
         return card
 
-    def send_card(self, chat_id: str, markdown_text: str, title: str = None):
+    def send_card(self, chat_id: str, markdown_text: str, title: str = None, reply_to: str = ""):
         """Send an interactive card message with markdown support."""
         card = self._build_card(markdown_text, title)
-        body = CreateMessageRequestBody.builder() \
-            .receive_id(chat_id) \
-            .msg_type("interactive") \
-            .content(json.dumps(card, ensure_ascii=False)) \
-            .build()
-        req = CreateMessageRequest.builder() \
-            .receive_id_type("chat_id") \
-            .request_body(body) \
-            .build()
-        resp = self._client.im.v1.message.create(req)
+        card_json = json.dumps(card, ensure_ascii=False)
+
+        if reply_to:
+            body = ReplyMessageRequestBody.builder() \
+                .msg_type("interactive") \
+                .content(card_json) \
+                .build()
+            req = ReplyMessageRequest.builder() \
+                .message_id(reply_to) \
+                .request_body(body) \
+                .build()
+            resp = self._client.im.v1.message.reply(req)
+        else:
+            body = CreateMessageRequestBody.builder() \
+                .receive_id(chat_id) \
+                .msg_type("interactive") \
+                .content(card_json) \
+                .build()
+            req = CreateMessageRequest.builder() \
+                .receive_id_type("chat_id") \
+                .request_body(body) \
+                .build()
+            resp = self._client.im.v1.message.create(req)
         if not resp.success():
             log.error("[Feishu] Send card failed: code=%s msg=%s", resp.code, resp.msg)
             self.send_plain_text(chat_id, markdown_text)
@@ -305,7 +320,7 @@ class FeishuBot:
                      chat_id, chat_type, text[:50] if text else "(none)", len(images))
             
             # Call handler with text and images
-            self._on_message(chat_id, chat_type, text, mentions_bot, images)
+            self._on_message(chat_id, chat_type, text, mentions_bot, images, message_id=message_id)
 
         except Exception as e:
             log.exception("[Feishu] Handle event error: %s", e)
