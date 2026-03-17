@@ -729,21 +729,12 @@ class Bridge:
         with self._sessions_lock:
             if chat_id in self._sessions:
                 session_id = self._sessions[chat_id]
-                # Try to load existing session
-                try:
-                    acp.session_load(session_id, work_dir)
-                    # Restore agent selection (session_load resets mode to default)
-                    saved_mode = self._session_modes.get(chat_id)
-                    if saved_mode:
-                        try:
-                            acp.session_set_mode(session_id, saved_mode)
-                        except Exception as e:
-                            log.warning("[Bridge] Failed to restore mode '%s': %s", saved_mode, e)
-                    log.info("[Bridge] Loaded existing session for chat %s", chat_id)
-                    return session_id
-                except Exception as e:
-                    log.warning("[Bridge] Failed to load session %s: %s, creating new one", session_id, e)
-                    # Fall through to create new session
+                # Session already in memory — just reuse it, no need to load.
+                # session/load is only needed after kiro-cli restart to restore
+                # from disk, but sessions are cleared on restart so we never
+                # reach here with a stale session_id.
+                log.info("[Bridge] Reusing session %s for chat %s", session_id, chat_id)
+                return session_id
 
         session_id, modes = acp.session_new(work_dir)
         log.info("[Bridge] Created new session %s for chat %s (cwd: %s)", session_id, chat_id, work_dir)
