@@ -24,6 +24,7 @@ Feishu WebSocket ──→ Bridge ──→ kiro-cli acp (on-demand)
 - **🔐 Interactive Permission Approval** - Kiro asks user (y/n/t) before sensitive operations
 - **⚡ On-Demand Startup** - kiro-cli starts only when message received, saves resources
 - **⏱️ Auto Idle Shutdown** - Configurable idle timeout to auto-stop kiro-cli
+- **🖼️ Image Support** - Send images for visual analysis (JPEG, PNG, GIF, WebP) with auto MIME detection
 - **🛑 Cancel Operation** - Send "cancel" to interrupt current operation
 - **🔧 MCP & Skills Support** - Global or workspace-level config (`.kiro/settings/mcp.json`, `.kiro/skills/`)
 - Shows tool call progress + final response
@@ -184,6 +185,7 @@ python bridge.py
 
 - **Group chat**: @bot + your question
 - **Private chat**: Send message directly
+- **Images**: Send images for Kiro to analyze (screenshots, diagrams, etc.) — supports JPEG, PNG, GIF, WebP with auto format detection and cross-turn persistence
 - **Cancel**: Send "cancel" to interrupt current operation
 - **Permission approval**: Reply y/n/t when permission request received
 
