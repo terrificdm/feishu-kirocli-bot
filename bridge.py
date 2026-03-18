@@ -1,8 +1,10 @@
 """Bridge: connects Feishu bot to Kiro CLI via ACP protocol."""
 
+import base64
 import json
 import logging
 import os
+import shutil
 import signal
 import sys
 import threading
@@ -155,8 +157,10 @@ class Bridge:
                 self._acp.stop()
                 self._acp = None
                 
-                # Clear sessions
+                # Clear sessions and clean up images
                 with self._sessions_lock:
+                    for chat_id in list(self._sessions.keys()):
+                        self._cleanup_images(chat_id)
                     self._sessions.clear()
                 self._session_to_chat.clear()
                 self._session_modes.clear()
@@ -570,6 +574,52 @@ class Bridge:
         merged_text = "\n".join(texts)
         return merged_text, all_images or None
 
+    def _save_images(self, work_dir: str, images: list[tuple[str, str]]) -> list[str]:
+        """Save base64 images to workspace and return absolute file paths."""
+        images_dir = os.path.join(work_dir, "images")
+        os.makedirs(images_dir, exist_ok=True)
+
+        saved = []
+        ts = int(time.time() * 1000)
+        ext_map = {
+            "image/jpeg": "jpg", "image/png": "png",
+            "image/gif": "gif", "image/webp": "webp",
+        }
+
+        for i, (b64_data, mime_type) in enumerate(images):
+            # Detect real MIME for correct file extension
+            detected = ACPClient._detect_image_mime(b64_data)
+            if detected:
+                mime_type = detected
+            ext = ext_map.get(mime_type, "jpg")
+            filename = f"{ts}_{i}.{ext}"
+            filepath = os.path.join(images_dir, filename)
+
+            with open(filepath, "wb") as f:
+                f.write(base64.b64decode(b64_data))
+
+            saved.append(filepath)
+            log.info("[Bridge] Saved image: %s (%d bytes)", filepath, os.path.getsize(filepath))
+
+        return saved
+
+    def _get_work_dir(self, chat_id: str) -> str:
+        """Get working directory for a chat session."""
+        if self._config.WORKSPACE_MODE == "fixed":
+            return self._config.WORKING_DIR
+        return os.path.join(self._config.WORKING_DIR, chat_id)
+
+    def _cleanup_images(self, chat_id: str):
+        """Remove saved images for a chat session."""
+        work_dir = self._get_work_dir(chat_id)
+        images_dir = os.path.join(work_dir, "images")
+        if os.path.isdir(images_dir):
+            try:
+                shutil.rmtree(images_dir)
+                log.info("[Bridge] Cleaned up images: %s", images_dir)
+            except OSError as e:
+                log.warning("[Bridge] Failed to clean images %s: %s", images_dir, e)
+
     def _process_message(self, chat_id: str):
         """Process pending messages with collect semantics."""
         with self._processing_lock:
@@ -653,6 +703,14 @@ class Bridge:
 
             # Track session -> chat mapping for permission requests
             self._session_to_chat[session_id] = chat_id
+
+            # Save images to workspace so kiro can re-read them later via Read tool
+            if images:
+                work_dir = self._get_work_dir(chat_id)
+                saved_paths = self._save_images(work_dir, images)
+                if saved_paths:
+                    path_note = ", ".join(saved_paths)
+                    text = (text or "") + f"\n\n[Image saved: {path_note}]"
 
             # Send prompt to Kiro with optional images and streaming
             stream_cb = _on_stream if thinking_msg_id else None
